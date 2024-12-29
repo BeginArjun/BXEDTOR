@@ -217,7 +217,9 @@ void editorUpdateRow(erow *row){
 void editorInsertRow(int at,char *s, size_t len){
     if(at < 0 || at > E.numrows) return;
 
-    E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
+    erow *new_row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
+    if(new_row == NULL) return;
+    E.row = new_row;
     memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
 
     E.row[at].size = len;
@@ -374,6 +376,7 @@ void openEditor(char *filename){
 }
 
 void editorSave(){
+    updateOperation(SAVE);
     if(E.filename == NULL) {
         E.filename = editorPrompt("Save as: %s (ESC to cancel)");
         if(E.filename == NULL){
@@ -393,7 +396,6 @@ void editorSave(){
                 free(buf);
                 E.dirty = 0;
                 editorSetStatusMessage("%d bytes written to disk", len);
-                updateOperation(SAVE);
                 return;
             }
         }
@@ -650,11 +652,11 @@ void editorDrawTopBar(struct abuf *ab){
 void editorDrawStatusBar(struct abuf *ab){
     abAppend(ab, "\x1b[7m", 4);
     char editor_status[80], rstatus[80];
-    int len = snprintf(editor_status, sizeof(editor_status), "%s - %d lines",
+    int len = snprintf(editor_status, sizeof(editor_status), " %s - %d lines",
     E.last_operation == INSERT ? "(INSERT)" : E.last_operation == DELETE ? "(DELETE)" : E.last_operation == SAVE ? "(SAVE)" : ""
     , E.numrows);
-    int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d", 
-    E.cy + 1, E.numrows);
+    int rlen = snprintf(rstatus, sizeof(rstatus), "Row : %d Col : %d", 
+    E.cy + 1, E.cx + 1);
     abAppend(ab, editor_status, len);
     while(len < E.screencols){
         if(E.screencols - len == rlen){
