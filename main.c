@@ -34,6 +34,13 @@ enum editorKey{
     DEL_KEY
 };
 
+enum OPERATIONS{
+    NO_OP = -1,
+    INSERT,
+    DELETE,
+    SAVE
+};
+
 // terminal
 void die(const char *s){
     perror(s);
@@ -63,6 +70,7 @@ struct editorConfig{
     char statusmsg[80];
     time_t statusmsg_time;
     int rx;
+    int last_operation;
 };
 
 struct abuf{
@@ -76,6 +84,7 @@ struct editorConfig E;
 void editorSetStatusMessage(const char *fmt, ...);
 void editorRefreshScreen();
 char *editorPrompt(char *prompt);
+void updateOperation(int operation);
 
 void abAppend(struct abuf *ab, const char *s, int len){
     char *new = realloc(ab->b, ab->len + len);
@@ -106,9 +115,9 @@ int editorReadKey(){
                 if(read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b';
                 if(seq[2] == '~'){
                     switch(seq[1]){
-                    case '1':
+                    case '1': case '7':
                         return HOME_KEY;
-                    case '4':
+                    case '4': case '8':
                         return END_KEY;
                     case '3':
                         return DEL_KEY;
@@ -277,14 +286,31 @@ void editorDelChar(){
         editorDelRow(E.cy);
         E.cy--;
     }
+    updateOperation(DELETE);
 }
 
 /*** editor operations ***/
+
+void updateOperation(int operation){
+   switch(operation){
+        case INSERT:
+            E.last_operation = INSERT;
+            break;
+        case DELETE:
+            E.last_operation = DELETE;
+            break;
+        default:
+            E.last_operation = NO_OP;
+            break;
+   }
+}
+
 void editorInsertChar(int c){
     if(E.cy == E.numrows){
         editorInsertRow(E.numrows,"", 0);
     }
     editorRowInsertChar(&E.row[E.cy], E.cx, c);
+    updateOperation(INSERT);
     E.cx++;
 }
 
@@ -367,6 +393,7 @@ void editorSave(){
                 free(buf);
                 E.dirty = 0;
                 editorSetStatusMessage("%d bytes written to disk", len);
+                updateOperation(SAVE);
                 return;
             }
         }
@@ -375,7 +402,7 @@ void editorSave(){
     }
 }
 
-void initEdior(){
+void initEditor(){
     E.cx = 0;
     E.cy = 0;
     E.rx = 0;
@@ -387,9 +414,10 @@ void initEdior(){
     E.filename = NULL;
     E.statusmsg[0] = '\0';
     E.statusmsg_time = 0;
+    E.last_operation = NO_OP;
 
     if(getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
-    E.screenrows -= 2;
+    E.screenrows -= 3;
 }
 
 
@@ -492,7 +520,7 @@ void moveCursor(int key){
             E.cx = 0;
             break;
         case END_KEY:
-            E.cx = E.screencols - 1;
+            if (row) E.cx = row->size;
             break;
     }
 
@@ -593,16 +621,41 @@ void splashScreen(struct abuf *ab){
     while(padding--) abAppend(ab, " ", 1);
     abAppend(ab, welcome, welcomelen);
 }
+// Top Bar will display Version of application and Filename
+void editorDrawTopBar(struct abuf *ab){
+    abAppend(ab, "\x1b[7m]",4);
+    char version[80], filename[21];
+    int versionlen = snprintf(version, sizeof(version), "BXEDTOR version --- %s", EDITOR_VERSION);
+    int filenamelen = snprintf(filename, sizeof(filename), "%s%.20s", E.dirty?"*":"" ,E.filename ? E.filename : "Untitled");
+    if(versionlen > E.screencols) versionlen = E.screencols;
+    if(filenamelen > E.screencols) filenamelen = E.screencols;
+
+    int padding = (E.screencols - filenamelen) / 2;
+    if (padding < 0) padding = 0;
+
+    abAppend(ab, version, versionlen);
+    while(versionlen < padding){
+        abAppend(ab, " ", 1);
+        versionlen++;
+    }
+    abAppend(ab, filename, filenamelen);
+    while(versionlen + filenamelen < E.screencols){
+        abAppend(ab, " ", 1);
+        versionlen++;
+    }
+    abAppend(ab, "\x1b[m", 3);
+    abAppend(ab, "\r\n", 2);
+}
 
 void editorDrawStatusBar(struct abuf *ab){
     abAppend(ab, "\x1b[7m", 4);
-    char status[80], rstatus[80];
-    int len = snprintf(status, sizeof(status), "%s%.20s - %d lines",
-    E.dirty ? "*" : "",
-    E.filename ? E.filename : "Untitled", E.numrows);
+    char editor_status[80], rstatus[80];
+    int len = snprintf(editor_status, sizeof(editor_status), "%s - %d lines",
+    E.last_operation == INSERT ? "(INSERT)" : E.last_operation == DELETE ? "(DELETE)" : E.last_operation == SAVE ? "(SAVE)" : ""
+    , E.numrows);
     int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d", 
     E.cy + 1, E.numrows);
-    abAppend(ab, status, len);
+    abAppend(ab, editor_status, len);
     while(len < E.screencols){
         if(E.screencols - len == rlen){
             abAppend(ab, rstatus, rlen);
@@ -657,16 +710,10 @@ void editorDrawRows(struct  abuf *ab) {
   for (y = 0; y < E.screenrows; y++) {
     int filerow = y + E.rowoffset;
     if (filerow >= E.numrows) {
-      if (y >= E.numrows){
-          if (E.numrows == 0 && y == E.screenrows / 3){
-              splashScreen(ab);
-          }else{
-              abAppend(ab, "~", 1);
-          }
-      }else{
-            int len = E.row[y].size;
-            if (len > E.screencols) len = E.screencols;
-            abAppend(ab, E.row[y].chars, len);
+      if (E.numrows == 0 && y == E.screenrows / 3){
+          splashScreen(ab);
+      } else {
+          abAppend(ab, "~", 1);
       }
     } else {
         int len = E.row[filerow].size - E.coloffset;
@@ -686,7 +733,7 @@ void editorRefreshScreen(){
     struct abuf ab = ABUF_INIT;
     abAppend(&ab, "\x1b[?25l", 6);
     abAppend(&ab, "\x1b[H", 3);
-
+    editorDrawTopBar(&ab);
     editorDrawRows(&ab);
     editorDrawStatusBar(&ab);
     editorDrawMessageBar(&ab);
@@ -694,7 +741,7 @@ void editorRefreshScreen(){
     abAppend(&ab, "\x1b[H", 3);
     
     char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoffset) + 1,( E.rx - E.coloffset) + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoffset) + 2,( E.rx - E.coloffset) + 1);
     abAppend(&ab, buf, strlen(buf));
     
     abAppend(&ab, "\x1b[?25h", 6);
@@ -710,7 +757,7 @@ void clearScreen(){
 // init
 int main(int argc, char *argv[]){
     enableRawMode();
-    initEdior();
+    initEditor();
     if(argc >= 2) openEditor(argv[1]);
 
     editorSetStatusMessage("HELP : Ctrl-S = save | Ctrl-X = quit");
