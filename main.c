@@ -498,6 +498,7 @@ int main(int argc, char *argv[]){
     enableRawMode();
     initEdior();
     clearScreen();
+    
     if(argc >= 2) openEditor(argv[1]);
 
     editorSetStatusMessage("HELP : Ctrl-Q = quit");
