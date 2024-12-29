@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <time.h>
+#include <fcntl.h>
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define ABUF_INIT {NULL, 0}
@@ -20,6 +21,7 @@
 #define EDITOR_TAB_STOP 8
 
 enum editorKey{
+    BACKSPACE = 127,
     ARROW_LEFT = 1000,
     ARROW_RIGHT,
     ARROW_UP,
@@ -67,6 +69,8 @@ struct abuf{
 };
 
 struct editorConfig E;
+
+void editorSetStatusMessage(const char *fmt, ...);
 
 void abAppend(struct abuf *ab, const char *s, int len){
     char *new = realloc(ab->b, ab->len + len);
@@ -211,6 +215,45 @@ void editorAppendRow(char *s, size_t len){
     E.numrows++;
 }
 
+void editorRowInsertChar(erow *row, int at, int c){
+    if(at < 0 || at > row->size) at = row->size;
+    row->chars = realloc(row->chars, row->size + 2);
+    memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
+    row->size++;
+    row->chars[at] = c;
+    editorUpdateRow(row);
+}
+
+
+/*** editor operations ***/
+void editorInsertChar(int c){
+    if(E.cy == E.numrows){
+        editorAppendRow("", 0);
+    }
+    editorRowInsertChar(&E.row[E.cy], E.cx, c);
+    E.cx++;
+}
+
+/*** file i/o ***/
+char *editorRowsToString(int *buflen){
+    int total_len = 0;
+    int j;
+    for(j = 0; j < E.numrows; j++){
+        total_len += E.row[j].size + 1;
+    }
+    *buflen = total_len;
+
+    char *buf = malloc(total_len);
+    char *p = buf;
+    for(j = 0; j < E.numrows; j++){
+        memcpy(p, E.row[j].chars, E.row[j].size);
+        p += E.row[j].size;
+        *p = '\n';
+        p++;
+    }
+    return buf;
+}
+
 void openEditor(char *filename){
     free(E.filename);
     E.filename = strdup(filename);
@@ -232,6 +275,27 @@ void openEditor(char *filename){
     } 
     free(line);
     fclose(fp);
+}
+
+void editorSave(){
+    if(E.filename == NULL) return;
+
+    int len;
+    char *buf = editorRowsToString(&len);
+
+    int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
+    if(fd != -1){
+        if(ftruncate(fd, len) != -1){
+            if(write(fd, buf, len) == len){
+                close(fd);
+                free(buf);
+                editorSetStatusMessage("%d bytes written to disk", len);
+                return;
+            }
+        }
+        editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
+        close(fd);
+    }
 }
 
 void initEdior(){
@@ -331,17 +395,28 @@ void moveCursor(int key){
 void editorProcessKeyPress(){
     int c = editorReadKey();
     switch(c){
+        case '\r':
+            // TODO
+            break;
+
         case CTRL_KEY('c'):
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(0);
             break;
+
+        case CTRL_KEY('s'):
+            editorSave();
+            break;
+
         case HOME_KEY:
             E.cx = 0;
             break;
+
         case END_KEY:
             if(E.cy < E.numrows) E.cx = E.row[E.cy].size;
             break;
+
         case PAGE_UP:
         case PAGE_DOWN:
         {
@@ -358,11 +433,26 @@ void editorProcessKeyPress(){
                 moveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
         }
             break;
+
         case ARROW_UP:
         case ARROW_DOWN:
         case ARROW_LEFT:
         case ARROW_RIGHT:
             moveCursor(c);
+            break;
+
+        case BACKSPACE:
+        case CTRL_KEY('h'):
+        case DEL_KEY:
+            // TODO
+            break;
+
+        case CTRL_KEY('l'):
+        case '\x1b':
+            break;
+
+        default:
+            editorInsertChar(c);
             break;
     }
 }
@@ -408,6 +498,14 @@ void editorDrawMessageBar(struct abuf *ab){
     if(msglen > E.screencols) msglen = E.screencols;
     if(msglen && time(NULL) - E.statusmsg_time < 5)
         abAppend(ab, E.statusmsg, msglen);
+}
+
+void editorSetStatusMessage(const char *fmt, ...){
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+    va_end(ap);
+    E.statusmsg_time = time(NULL);
 }
 
 void editorScroll(){
@@ -458,14 +556,6 @@ void editorDrawRows(struct  abuf *ab) {
   }
 }
 
-void editorSetStatusMessage(const char *fmt, ...){
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
-    va_end(ap);
-    E.statusmsg_time = time(NULL);
-}
-
 void editorRefreshScreen(){
     editorScroll();
 
@@ -497,11 +587,10 @@ void clearScreen(){
 int main(int argc, char *argv[]){
     enableRawMode();
     initEdior();
-    clearScreen();
-    
+
     if(argc >= 2) openEditor(argv[1]);
 
-    editorSetStatusMessage("HELP : Ctrl-Q = quit");
+    editorSetStatusMessage("HELP : Ctrl-S = save | Ctrl-Q = quit");
 
     while(1){
         editorRefreshScreen();
