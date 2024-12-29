@@ -3,6 +3,10 @@
 **BXEDTOR** is a lightweight text editor written in C, designed for basic text manipulation. It is minimalistic and compiled using the GCC compiler.  
 
 ---
+<img src="https://github.com/user-attachments/assets/6e9cd3d5-582f-44ca-b3f1-d7d22296796b" alt="BXEDTOR" loading="eager"/>
+
+---
+
 
 ## Features
 
