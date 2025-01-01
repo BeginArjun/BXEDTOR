@@ -83,7 +83,7 @@ struct editorConfig E;
 /*** prototypes ***/
 void editorSetStatusMessage(const char *fmt, ...);
 void editorRefreshScreen();
-char *editorPrompt(char *prompt);
+char *editorPrompt(char *prompt, void (*callback)(char *, int));
 void updateOperation(int operation);
 
 void abAppend(struct abuf *ab, const char *s, int len){
@@ -189,6 +189,20 @@ int editorRowCxToRx(erow *row, int cx){
         rx++;
     }
     return rx;
+}
+
+int editorRowRxtoCx(erow *row, int rx){
+    int cur_rx = 0;
+    int cx;
+
+    for(cx = 0; cx < row->size; cx++){
+        if(row->chars[cx] == '\t')
+            cur_rx += (EDITOR_TAB_STOP - 1) - (cur_rx % EDITOR_TAB_STOP);
+        cur_rx++;
+
+        if(cur_rx > rx) return cx;
+    }
+    return cx;
 }
 
 void editorUpdateRow(erow *row){
@@ -378,7 +392,7 @@ void openEditor(char *filename){
 void editorSave(){
     updateOperation(SAVE);
     if(E.filename == NULL) {
-        E.filename = editorPrompt("Save as: %s (ESC to cancel)");
+        E.filename = editorPrompt("Save as: %s (ESC to cancel)", NULL);
         if(E.filename == NULL){
             editorSetStatusMessage("Save aborted");
             return;
@@ -401,6 +415,34 @@ void editorSave(){
         }
         editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
         close(fd);
+    }
+}
+
+/*** find ***/
+
+void editorFindCallback(char *query, int key){
+    if(key == '\r' || key == '\x1b'){
+        return;
+    }
+
+    int i;
+    for(i = 0; i < E.numrows; i++){
+        erow *row = &E.row[i];
+        char *match = strstr(row->render, query);
+        if(match){
+            E.cy = i;
+            E.cx = editorRowRxtoCx(row, match - row->render);
+            E.rowoffset = E.numrows;
+            break;
+        }
+    }
+}
+
+void editorFind(){
+    char *query = editorPrompt(" Search: %s (ESC to cancel)", editorFindCallback);
+
+    if(query){
+        free(query);
     }
 }
 
@@ -451,7 +493,7 @@ void enableRawMode(){
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr"); // set the new attributes of the terminal
 }
 
-char *editorPrompt(char *prompt){
+char *editorPrompt(char *prompt, void (*callback)(char *, int)){
     size_t bufsize = 128;
     char *buf = malloc(bufsize);
 
@@ -482,6 +524,8 @@ char *editorPrompt(char *prompt){
         }else if(c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE){
             if(buflen != 0) buf[--buflen] = '\0';
         }
+
+        if(callback) callback(buf, c);
     }
 }
 
@@ -558,6 +602,10 @@ void editorProcessKeyPress(){
 
         case CTRL_KEY('s'):
             editorSave();
+            break;
+
+        case CTRL_KEY('f'):
+            editorFind();
             break;
 
         case HOME_KEY:
@@ -762,7 +810,7 @@ int main(int argc, char *argv[]){
     initEditor();
     if(argc >= 2) openEditor(argv[1]);
 
-    editorSetStatusMessage("HELP : Ctrl-S = save | Ctrl-X = quit");
+    editorSetStatusMessage("HELP : Ctrl-S = save | Ctrl-X = quit | Ctrl-F = find");
 
     while(1){
         editorRefreshScreen();
