@@ -799,7 +799,17 @@ void editorDrawRows(struct  abuf *ab) {
         int len = E.row[filerow].size - E.coloffset;
         if (len < 0) len = 0;
         if (len > E.screencols) len = E.screencols;
-        abAppend(ab, &E.row[filerow].render[E.coloffset], len);
+        char *c = &E.row[filerow].render[E.coloffset];
+        int j;
+        for(j = 0; j < len; j++){
+            if(isdigit(c[j])){
+                abAppend(ab, "\x1b[34m", 5);
+                abAppend(ab, &c[j], 1);
+                abAppend(ab, "\x1b[m", 3);
+            }else{
+                abAppend(ab, &c[j], 1);
+            }
+        }
     }
 
     abAppend(ab, "\x1b[K", 3);
