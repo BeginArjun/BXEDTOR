@@ -71,6 +71,7 @@ struct editorConfig{
     time_t statusmsg_time;
     int rx;
     int last_operation;
+    int checkpoint[2]; // save the cursor position [row, col]
 };
 
 struct abuf{
@@ -386,6 +387,9 @@ void openEditor(char *filename){
     } 
     free(line);
     fclose(fp);
+    E.checkpoint[0] = E.cy;
+    E.checkpoint[1] = E.cx;
+
     E.dirty = 0;
 }
 
@@ -408,6 +412,8 @@ void editorSave(){
             if(write(fd, buf, len) == len){
                 close(fd);
                 free(buf);
+                E.checkpoint[0] = E.cy;
+                E.checkpoint[1] = E.cx;
                 E.dirty = 0;
                 editorSetStatusMessage("%d bytes written to disk", len);
                 return;
@@ -489,6 +495,8 @@ void initEditor(){
     E.statusmsg[0] = '\0';
     E.statusmsg_time = 0;
     E.last_operation = NO_OP;
+    E.checkpoint[0] = 0;
+    E.checkpoint[1] = 0;
 
     if(getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
     E.screenrows -= 3;
@@ -844,6 +852,14 @@ void clearScreen(){
     write(STDOUT_FILENO, "\x1b[2J", 4);
 }
 
+void checkDirty(){
+    if(E.checkpoint[0] != E.cy || E.checkpoint[1] != E.cx){
+        E.dirty = 1;
+    }else{
+        E.dirty = 0;
+    }
+}
+
 // init
 int main(int argc, char *argv[]){
     enableRawMode();
@@ -853,6 +869,7 @@ int main(int argc, char *argv[]){
     editorSetStatusMessage("HELP : Ctrl-S = save | Ctrl-X = quit | Ctrl-F = find");
 
     while(1){
+        checkDirty();
         editorRefreshScreen();
         editorProcessKeyPress();
     }
