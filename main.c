@@ -1026,6 +1026,16 @@ void editorDrawRows(struct  abuf *ab) {
                     current_color = -1;
                 }
                 abAppend(ab, &c[j], 1);
+            }else if(iscntrl(c[j])){
+                char sym = (c[j] <= 26) ? '@' + c[j] : '?';
+                abAppend(ab, "\x1b[7m", 4);
+                abAppend(ab, &sym, 1);
+                abAppend(ab, "\x1b[m", 3);
+                if(current_color != -1){
+                    char buf[16];
+                    int clen = snprintf(buf, sizeof(buf), "\x1b[%dm]", current_color);
+                    abAppend(ab, buf, clen);
+                }
             }else{
                 int color = editorSyntaxToColor(hl[j]);
                 if(color != current_color){
