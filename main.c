@@ -39,9 +39,12 @@ enum editorKey{
 enum editorHighlight{
     HL_NORMAL,
     HL_COMMENT,
+    HL_KEYWORD1,
+    HL_KEYWORD2,
     HL_STRING,
     HL_NUMBER,
-    HL_MATCH
+    HL_MATCH,
+    HL_IDENTIFIER
 };
 
 enum OPERATIONS{
@@ -89,6 +92,7 @@ struct editorConfig{
 struct editorSyntax{
     char *filetype;
     char **filematch;
+    char **keywords;
     char **singleline_comment_start;
     int flags;
 };
@@ -102,11 +106,19 @@ struct editorConfig E;
 
 /*** filetypes ***/
 char *C_HL_extensions[] = {".c", ".h", ".cpp", NULL};
+char *C_HL_keywords[] = {
+    "switch", "if", "while", "for", "break", "continue", "return", "else",
+    "struct", "union", "typedef", "static", "enum", "class", "case",
+
+    "int|", "long|", "double|", "float|", "char|", "unsigned|", "signed|",
+    "void|", NULL
+};
 
 struct editorSyntax HLDB[] = {
     {
         "c",
         C_HL_extensions,
+        C_HL_keywords,
         "//",
         HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRING
     },
@@ -221,17 +233,24 @@ int is_separator(int c){
     return isspace(c) || c == '\0' || strchr(",.()+-/*=~%<>[];", c) != NULL;
 }
 
+int isIdentifier(char c){
+    return isalnum(c) || c == '_';
+}
+
 void editorUpdateSyntax(erow *row){
     row->hl = realloc(row->hl, row->rsize);
     memset(row->hl, HL_NORMAL, row->rsize);
 
     if(E.syntax == NULL) return;
 
+    char **keywords = E.syntax->keywords;
+
     char *scs = E.syntax->singleline_comment_start;
     int scs_len = scs ? strlen(scs) : 0;
 
     int prev_sep = 1;
     int in_string = 0;
+    int in_identifier = 0;
 
     int i = 0;
     while( i < row->rsize){
@@ -275,6 +294,37 @@ void editorUpdateSyntax(erow *row){
                 continue;
             }
         }
+
+        if(prev_sep){
+            int j;
+            for(j = 0; keywords[j];j++){
+                int klen = strlen(keywords[j]);
+                int kw2 = keywords[j][klen - 1] == '|';
+                if(kw2) klen--;
+
+                if(!strncmp(&row->render[i], keywords[j], klen) && is_separator(row->render[i + klen])){
+                    memset(&row->hl[i], kw2 ? HL_KEYWORD2 : HL_KEYWORD1, klen);
+                    i += klen;
+                    break;
+                }
+            }
+            if(keywords[j] != NULL){
+                prev_sep = 0;
+                continue;
+            }
+        }
+
+        if (isIdentifier(c)) {
+            if (!in_identifier) {
+                in_identifier = 1;
+                row->hl[i] = HL_IDENTIFIER;
+            } else {
+                row->hl[i] = HL_IDENTIFIER;
+            }
+        } else {
+            in_identifier = 0;
+        }
+
         prev_sep = is_separator(c);
         i++;
     }
@@ -286,6 +336,9 @@ int editorSyntaxToColor(int hl){
         case HL_STRING: return 33;
         case HL_COMMENT: return 32;
         case HL_MATCH: return 36;
+        case HL_KEYWORD1: return 35;
+        case HL_KEYWORD2: return 95;
+        case HL_IDENTIFIER: return 94; // Blue color for identifiers
         default: return 37;
     }
 }
