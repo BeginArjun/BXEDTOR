@@ -609,13 +609,25 @@ char *editorRowsToString(int *buflen){
     return buf;
 }
 
+FILE *openFile(char *filename){
+    FILE *fp = fopen(filename, "a+");
+    if(!fp) die("fopen");
+    return fp;
+}
+
 void openEditor(char *filename){
     free(E.filename);
+
+    if(filename == NULL){
+        E.filename = NULL;
+        return;
+    }
+
     E.filename = strdup(filename);
 
     editorSelectSyntaxHiglight();
 
-    FILE *fp = fopen(filename, "r");
+    FILE *fp = openFile(filename);
     if(!fp) die("fopen");
 
     char *line = NULL;
@@ -636,6 +648,14 @@ void openEditor(char *filename){
     E.checkpoint[1] = E.cx;
 
     E.dirty = 0;
+}
+
+void openEditorCallback(char *filename, int key){
+    if(key == '\r'){
+        openEditor(filename);
+    } else if(key == '\x1b'){
+        editorSetStatusMessage("");
+    }
 }
 
 void editorSave(){
@@ -902,6 +922,17 @@ void editorProcessKeyPress(){
             editorSave();
             break;
 
+        case CTRL_KEY('o'):
+            {
+                char *filename = editorPrompt("Open file: %s (ESC to cancel)", NULL);
+                if(filename){
+                    openEditor(filename);
+                }else{
+                    editorSetStatusMessage("Open aborted");
+                }
+            }
+            break;
+
         case CTRL_KEY('g'):
             editorSetStatusMessage("HELP : Ctrl-S = save | Ctrl-X = quit | Ctrl-F = find | Ctrl-G = help");
             break;
@@ -1152,7 +1183,7 @@ int main(int argc, char *argv[]){
     initEditor();
     if(argc >= 2) openEditor(argv[1]);
 
-    editorSetStatusMessage("HELP : Ctrl-S = save | Ctrl-X = quit | Ctrl-F = find");
+    editorSetStatusMessage("HELP (Ctrl-G) : Ctrl-S = save | Ctrl-X = quit | Ctrl-F = find | Ctrl-O = Open File");
 
     while(1){
         // checkDirty();
