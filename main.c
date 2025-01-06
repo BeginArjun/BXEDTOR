@@ -1151,7 +1151,7 @@ int main(int argc, char *argv[]){
     editorSetStatusMessage("HELP : Ctrl-S = save | Ctrl-X = quit | Ctrl-F = find");
 
     while(1){
-        checkDirty();
+        // checkDirty();
         editorRefreshScreen();
         editorProcessKeyPress();
     }
