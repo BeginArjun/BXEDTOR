@@ -562,9 +562,16 @@ void editorInsertChar(int c){
     if(E.cy == E.numrows){
         editorInsertRow(E.numrows,"", 0);
     }
-    editorRowInsertChar(&E.row[E.cy], E.cx, c);
+    if (c == '\t') {
+        for (int i = 0; i < EDITOR_TAB_STOP; i++) {
+            editorRowInsertChar(&E.row[E.cy], E.cx, ' ');
+            E.cx++;
+        }
+    } else {
+        editorRowInsertChar(&E.row[E.cy], E.cx, c);
+        E.cx++;
+    }
     updateOperation(INSERT);
-    E.cx++;
 }
 
 void editorInsertNewline(){
