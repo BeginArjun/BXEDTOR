@@ -609,6 +609,25 @@ char *editorRowsToString(int *buflen){
     return buf;
 }
 
+void closeEditor(){
+    for(int i = 0; i < E.numrows; i++){
+        editorFreeRow(&E.row[i]);
+    }
+    if(E.row) free(E.row);
+    if(E.filename){
+        free(E.filename);
+        E.filename = NULL;
+    }
+    E.numrows = 0;
+    E.row = NULL;
+    E.dirty = 0;
+    E.checkpoint[0] = 0;
+    E.checkpoint[1] = 0;
+    E.last_operation = NO_OP;
+    E.syntax = NULL;
+    editorSetStatusMessage("File closing...");
+}
+
 FILE *openFile(char *filename){
     FILE *fp = fopen(filename, "a+");
     if(!fp) die("fopen");
@@ -912,7 +931,7 @@ void editorProcessKeyPress(){
                 quit_times--;
                 return;
             }
-
+            closeEditor();
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(0);
