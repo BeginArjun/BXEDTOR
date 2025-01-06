@@ -902,6 +902,10 @@ void editorProcessKeyPress(){
             editorSave();
             break;
 
+        case CTRL_KEY('g'):
+            editorSetStatusMessage("HELP : Ctrl-S = save | Ctrl-X = quit | Ctrl-F = find | Ctrl-G = help");
+            break;
+
         case CTRL_KEY('f'):
             editorFind();
             break;
